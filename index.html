@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f2ee" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1b1917" media="(prefers-color-scheme: dark)">
+  <title>ヘアスタイル試着</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main class="app">
+    <header>
+      <h1>ヘアスタイル試着</h1>
+      <p class="tip">髪をまとめて、無地の壁の前で撮るときれいに仕上がります</p>
+    </header>
+
+    <div class="pickers">
+      <label class="pick" id="pick-face">
+        <input type="file" accept="image/*" id="file-face">
+        <span class="pick-title">顔写真を選ぶ</span>
+        <span class="pick-state" id="state-face">未選択</span>
+      </label>
+      <label class="pick" id="pick-style">
+        <input type="file" accept="image/*" id="file-style">
+        <span class="pick-title">髪型写真を選ぶ</span>
+        <span class="pick-state" id="state-style">未選択</span>
+      </label>
+    </div>
+
+    <div class="stage" id="stage">
+      <canvas id="view" aria-label="合成プレビュー"></canvas>
+      <div class="placeholder" id="placeholder">顔写真と髪型写真を選ぶと、ここに合成が表示されます</div>
+      <div class="status" id="status" hidden></div>
+      <div class="eyetap" id="eyetap" hidden>
+        <p id="eyetap-msg"></p>
+        <button type="button" id="eyetap-skip">スキップ</button>
+      </div>
+    </div>
+
+    <div class="tools" id="tools">
+      <div class="seg" role="group" aria-label="操作モード">
+        <button type="button" data-mode="move" class="on">移動</button>
+        <button type="button" data-mode="erase">消しゴム</button>
+      </div>
+      <div class="seg sizes" id="sizes" role="group" aria-label="消しゴムの太さ" hidden>
+        <button type="button" data-size="10">小</button>
+        <button type="button" data-size="20" class="on">中</button>
+        <button type="button" data-size="40">大</button>
+      </div>
+      <div class="row">
+        <button type="button" id="btn-flip">左右反転</button>
+        <button type="button" id="btn-undo">元に戻す</button>
+        <button type="button" id="btn-reset">リセット</button>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="remove-hair" checked>
+        <span>元の髪を消す</span>
+      </label>
+      <p class="hint">1本指で移動、2本指で拡大・回転できます</p>
+    </div>
+
+    <button type="button" class="save" id="btn-save" disabled>保存</button>
+  </main>
+
+  <div class="saved" id="saved" hidden>
+    <p>画像を長押しすると保存できます</p>
+    <img id="saved-img" alt="合成した画像">
+    <button type="button" id="saved-close">閉じる</button>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
