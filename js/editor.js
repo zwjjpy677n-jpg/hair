@@ -15,7 +15,14 @@ export function createEditor() {
   let history = [];
   let eraseCache = null; // { count, mask: Uint8Array }
   let filled = null; // rgba of base with holes filled
+  let filledKey = null;
+  let baseCanvas = null; // canvas built from `filled`, rebuilt only when it changes
   let layerCanvasCache = null;
+
+  function fillKey() {
+    return [state.base, state.baseHair, state.layer, state.removeHair, state.flipped, state.strokes, ...state.transform];
+  }
+  const sameKey = (a, b) => a && b && a.length === b.length && a.every((v, i) => v === b[i]);
 
   // Reference points on the layer used for alignment and flipping.
   function refEyes() {
@@ -49,7 +56,7 @@ export function createEditor() {
   }
 
   function snapshot() {
-    return { transform: [...state.transform], flipped: state.flipped, strokes: state.strokes.slice() };
+    return { transform: [...state.transform], flipped: state.flipped, strokes: state.strokes };
   }
 
   function pushHistory() {
@@ -105,11 +112,16 @@ export function createEditor() {
     return threshold(subtract(dilate(state.baseHair, 6), dilate(layerAlphaInBase(), 2)));
   }
 
-  /** Recompute the base image with the original hair filled in. */
+  /** Recompute the base image with the original hair filled in. Returns false if nothing changed. */
   function refreshFill() {
-    if (!state.base) return;
+    if (!state.base) return false;
+    const key = fillKey();
+    if (filled && sameKey(key, filledKey)) return false;
     const { width: W, height: H, rgba } = state.base;
     filled = state.layer && state.removeHair ? fillHoles(rgba, W, H, holeMask()) : rgba;
+    filledKey = key;
+    baseCanvas = null;
+    return true;
   }
 
   function makeCanvas(w, h) {
@@ -134,11 +146,13 @@ export function createEditor() {
     if (!state.base) return;
     const { width: W, height: H } = state.base;
     if (!filled) refreshFill();
-    const baseC = makeCanvas(W, H);
-    baseC.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(filled), W, H), 0, 0);
+    if (!baseCanvas) {
+      baseCanvas = makeCanvas(W, H);
+      baseCanvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(filled), W, H), 0, 0);
+    }
     ctx.save();
     ctx.setTransform(...outer);
-    ctx.drawImage(baseC, 0, 0);
+    ctx.drawImage(baseCanvas, 0, 0);
     if (state.layer) {
       ctx.setTransform(...multiply(outer, effectiveTransform()));
       ctx.imageSmoothingQuality = 'high';
@@ -166,6 +180,14 @@ export function createEditor() {
       filled = null; resetEdits();
     },
     pushHistory,
+    /** Drop the last undo entry if the state equals it (e.g. a tap without movement). */
+    dropHistoryIfUnchanged() {
+      const last = history.at(-1);
+      if (!last) return;
+      const same = last.flipped === state.flipped && last.strokes === state.strokes
+        && last.transform.every((v, i) => v === state.transform[i]);
+      if (same) history.pop();
+    },
     applyGesture(delta) {
       state.transform = multiply(delta, state.transform);
     },
@@ -205,6 +227,8 @@ export function createEditor() {
     layerAlphaInBase,
     holeMask,
     refreshFill,
+    /** True if refreshFill() would recompute. */
+    needsFill() { return !!state.base && !(filled && sameKey(fillKey(), filledKey)); },
     render,
   };
 }

@@ -15,8 +15,10 @@ const ui = {
   faceImage: null,   // loaded face photo
   styleImage: null,  // loaded hairstyle photo
   eyeTap: null,      // { target: 'base'|'layer', image, points: [] }
-  stroke: null,      // screen-space eraser points (photo coords)
+  stroke: null,      // eraser points (photo coords) of the stroke in progress
+  multiTouch: false, // a second finger joined the current interaction
 };
+window.__hairApp = { editor };
 
 // ---------- status ----------
 function setStatus(msg, isError = false) {
@@ -37,9 +39,12 @@ function sizeCanvas(img) {
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
   const cssW = $('stage').clientWidth;
   const cssH = (cssW * img.height) / img.width;
-  view.style.height = `${cssH}px`;
-  view.width = Math.round(cssW * dpr);
-  view.height = Math.round(cssH * dpr);
+  const w = Math.round(cssW * dpr), h = Math.round(cssH * dpr);
+  // Only touch the canvas size when it changes: resizing reallocates and clears it.
+  if (view.width !== w || view.height !== h) {
+    view.style.height = `${cssH}px`;
+    view.width = w; view.height = h;
+  }
 }
 
 function draw() {
@@ -78,10 +83,12 @@ function requestDraw() {
 }
 
 async function refreshFill() {
-  if (!editor.state.base || !editor.state.layer) { requestDraw(); return; }
-  if (editor.state.removeHair) { setStatus('仕上げています…'); await nextFrame(); }
-  editor.refreshFill();
-  setStatus(null);
+  if (editor.state.base && editor.state.layer && editor.needsFill()) {
+    const showStatus = editor.state.removeHair && $('status').hidden;
+    if (showStatus) { setStatus('仕上げています…'); await nextFrame(); }
+    editor.refreshFill();
+    if (showStatus) setStatus(null);
+  }
   requestDraw();
 }
 
@@ -98,6 +105,11 @@ function startEyeTap(target, image, which) {
   $('eyetap-msg').textContent = `${which}の顔が見つかりませんでした。画面の左側にある目をタップしてください`;
   updateControls();
   requestDraw();
+}
+
+function cancelEyeTap() {
+  ui.eyeTap = null;
+  $('eyetap').hidden = true;
 }
 
 function finishEyeTap(eyes) {
@@ -143,6 +155,7 @@ async function onFacePicked(file) {
     const image = await loadImageFile(file);
     const { hair, eyes } = await analyze(image, '顔写真');
     ui.faceImage = image;
+    cancelEyeTap();
     editor.setBase(image, hair);
     if (eyes) editor.setBaseEyes(eyes);
     $('pick-face').classList.add('done'); $('state-face').textContent = '選択済み';
@@ -167,6 +180,7 @@ async function onStylePicked(file) {
       return;
     }
     const layer = { width: image.width, height: image.height, rgba: maskToLayer(image.rgba, feather(hair, 2)) };
+    cancelEyeTap();
     editor.setLayer(layer, eyes);
     $('pick-style').classList.add('done'); $('state-style').textContent = '選択済み';
     setStatus(null);
@@ -204,10 +218,15 @@ function toPhoto(e) {
 view.addEventListener('pointerdown', (e) => {
   if (ui.eyeTap) { onEyeTap(toPhoto(e)); return; }
   if (!editor.state.base || !editor.state.layer) return;
-  view.setPointerCapture(e.pointerId);
+  try { view.setPointerCapture(e.pointerId); } catch { /* synthetic pointers */ }
   if (pointers.size === 0) {
+    ui.multiTouch = false;
     if (ui.mode === 'move') editor.pushHistory();
     else ui.stroke = [toPhoto(e)];
+  } else if (!ui.multiTouch) {
+    // A second finger: pinch/rotate in any mode, and drop a partial eraser stroke.
+    ui.multiTouch = true;
+    if (ui.mode === 'erase') { ui.stroke = null; editor.pushHistory(); }
   }
   pointers.set(e.pointerId, toPhoto(e));
   requestDraw();
@@ -218,8 +237,8 @@ view.addEventListener('pointermove', (e) => {
   const prev = new Map(pointers);
   const cur = toPhoto(e);
   pointers.set(e.pointerId, cur);
-  if (ui.mode === 'erase') {
-    if (ui.stroke && pointers.size === 1) ui.stroke.push(cur);
+  if (ui.mode === 'erase' && !ui.multiTouch) {
+    if (ui.stroke) ui.stroke.push(cur);
   } else if (pointers.size === 1) {
     const p = prev.get(e.pointerId);
     editor.applyGesture([1, 0, 0, 1, cur.x - p.x, cur.y - p.y]);
@@ -237,7 +256,10 @@ function endPointer(e) {
   if (ui.mode === 'erase' && ui.stroke) {
     editor.addStroke(ui.stroke, ui.eraseSize * photoPerCss());
     ui.stroke = null;
+  } else {
+    editor.dropHistoryIfUnchanged();
   }
+  ui.multiTouch = false;
   refreshFill();
 }
 view.addEventListener('pointerup', endPointer);

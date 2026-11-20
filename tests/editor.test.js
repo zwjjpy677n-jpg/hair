@@ -121,3 +121,25 @@ test('erase cache does not go stale after reset and a new stroke', () => {
   assert.ok(a.data[10 * 40 + 10] > 0.9);
   assert.equal(a.data[30 * 40 + 30], 0);
 });
+
+test('refreshFill skips work when nothing changed', () => {
+  const ed = setup({ baseHair: mask(40, 40, (x) => x < 8) });
+  assert.equal(ed.refreshFill(), true);
+  assert.equal(ed.refreshFill(), false);
+  ed.applyGesture([1, 0, 0, 1, 1, 0]);
+  assert.equal(ed.refreshFill(), true);
+  ed.state.removeHair = false;
+  assert.equal(ed.refreshFill(), true);
+  ed.toggleFlip();
+  assert.equal(ed.refreshFill(), true);
+  assert.equal(ed.refreshFill(), false);
+});
+
+test('a gesture that changes nothing leaves no undo entry', () => {
+  const ed = setup();
+  ed.toggleFlip();
+  ed.pushHistory(); // gesture start
+  ed.dropHistoryIfUnchanged(); // gesture ended without movement
+  ed.undo();
+  assert.equal(ed.state.flipped, false);
+});
